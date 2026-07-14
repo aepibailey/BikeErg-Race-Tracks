@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>BikeErg Racer — Phase 1: BLE Data</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <h1>BikeErg Racer</h1>
+      <span class="phase">Phase 1 · Live BLE Data</span>
+    </header>
+
+    <section class="connbar">
+      <button id="connectBtn" class="btn">Connect PM5</button>
+      <div class="status">
+        <span id="statusDot" class="dot off"></span>
+        <div class="status-text">
+          <span id="statusText">Not connected</span>
+          <small id="deviceName"></small>
+        </div>
+      </div>
+    </section>
+
+    <p id="unsupported" class="warn" hidden>
+      Web Bluetooth isn't available in this browser. Use <strong>Chrome</strong>
+      on Android (or desktop) served over <strong>HTTPS</strong> or localhost.
+    </p>
+
+    <section class="grid">
+      <div class="metric big">
+        <span class="value" id="power">0</span>
+        <span class="label">Power (W)</span>
+      </div>
+      <div class="metric big">
+        <span class="value" id="speed">0.0</span>
+        <span class="label">Speed (km/h)</span>
+      </div>
+      <div class="metric big">
+        <span class="value" id="cadence">0</span>
+        <span class="label">Cadence (rpm)</span>
+      </div>
+
+      <div class="metric">
+        <span class="value" id="distance">0</span>
+        <span class="label">Distance (m)</span>
+      </div>
+      <div class="metric">
+        <span class="value" id="time">0:00</span>
+        <span class="label">Elapsed</span>
+      </div>
+      <div class="metric">
+        <span class="value" id="strokes">0</span>
+        <span class="label">Strokes</span>
+      </div>
+      <div class="metric">
+        <span class="value" id="hr">–</span>
+        <span class="label">Heart rate</span>
+      </div>
+      <div class="metric">
+        <span class="value" id="drag">–</span>
+        <span class="label">Drag factor</span>
+      </div>
+    </section>
+
+    <p class="hint">
+      Open the browser console (Chrome DevTools) to see raw + parsed BLE values
+      for sanity-checking against the PM5 display.
+    </p>
+  </main>
+
+  <script src="js/pm5.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

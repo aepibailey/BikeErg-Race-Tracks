@@ -1,0 +1,137 @@
+/* Phase 1 UI — deliberately plain. The Tron/F-Zero styling arrives in Phase 2;
+   here we just want legible, reliable live numbers for on-erg verification. */
+:root {
+  --bg: #0a0e14;
+  --panel: #131a24;
+  --line: #223044;
+  --text: #e6edf3;
+  --muted: #7d8da3;
+  --accent: #35e0ff;
+  --ok: #37d67a;
+  --pending: #f5b942;
+  --off: #6b7686;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.5px;
+}
+.phase {
+  color: var(--accent);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.connbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 12px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 160px;
+  min-height: 48px; /* comfortable tap target on tablet */
+  transition: background 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) { background: var(--accent); color: #06121a; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.status { display: flex; align-items: center; gap: 10px; }
+.status-text { display: flex; flex-direction: column; line-height: 1.25; }
+.status-text small { color: var(--muted); font-size: 0.8rem; }
+
+.dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--off); flex: none;
+  box-shadow: 0 0 0 0 transparent;
+}
+.dot.ok      { background: var(--ok);      box-shadow: 0 0 12px var(--ok); }
+.dot.pending { background: var(--pending); box-shadow: 0 0 12px var(--pending); animation: pulse 1s infinite; }
+.dot.off     { background: var(--off); }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+.warn {
+  background: #3a1d1d;
+  border: 1px solid #7a3535;
+  color: #ffd7d7;
+  padding: 12px 14px;
+  border-radius: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.metric {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.metric .value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.metric .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.metric.big { grid-column: span 1; }
+.metric.big .value { font-size: 2.8rem; color: var(--accent); }
+
+@media (min-width: 640px) {
+  .metric.big { grid-column: span 2; }
+}
+
+.hint {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
