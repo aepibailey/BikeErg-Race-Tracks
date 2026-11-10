@@ -1,4 +1,4 @@
-/* Phase 1 UI — deliberately plain. The Tron/F-Zero styling arrives in Phase 2;
+/* Phase 1 UI — deliberately plain. The synthwave styling arrives in Phase 2;
    here we just want legible, reliable live numbers for on-erg verification. */
 :root {
   --bg: #0a0e14;
@@ -70,6 +70,9 @@ main {
 }
 .btn:hover:not(:disabled) { background: var(--accent); color: #06121a; }
 .btn:disabled { opacity: 0.5; cursor: default; }
+.btn.secondary { border-color: var(--line); color: var(--muted); }
+.btn.secondary:hover:not(:disabled) { background: var(--line); color: var(--text); }
+.btn.recording { border-color: #ff4d6d; color: #ff4d6d; animation: pulse 1s infinite; }
 
 .status { display: flex; align-items: center; gap: 10px; }
 .status-text { display: flex; flex-direction: column; line-height: 1.25; }

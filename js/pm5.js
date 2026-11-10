@@ -1,113 +1,66 @@
 /*
- * pm5.js — Concept2 PM5 Bluetooth LE interface (Phase 1)
+ * pm5.js — Concept2 PM5 Bluetooth LE connection (as fitted to a BikeErg).
  *
- * Connects to a Concept2 PM5 monitor (as fitted to a BikeErg) over Web
- * Bluetooth, subscribes to the C2-proprietary rowing/erg data stream, parses
- * the raw bytes, and emits normalised metrics.
+ * Connects over Web Bluetooth, subscribes to the C2-proprietary erg data
+ * stream, decodes packets (see pm5-parse.js) and emits one merged metrics
+ * snapshot. Also owns the connection lifecycle: if the link drops mid-ride it
+ * reconnects on its own, keeping the metrics it already has.
  *
- * ---------------------------------------------------------------------------
- * SPEC SOURCE
- * ---------------------------------------------------------------------------
- * The PM5 does NOT use the standard Bluetooth Fitness Machine Service (FTMS)
- * as its primary interface. It uses Concept2's own GATT services, documented
- * in "PM5 Bluetooth Smart Interface Definition" (Concept2). The UUIDs and byte
- * layouts below were cross-checked against several independent open-source
- * implementations that agree with each other (go-row, ErgometerJS,
- * ergarcade/pm5-base, qdomyos-zwift, Concept2-SDK).
- *
- * All multi-byte integers are LITTLE-ENDIAN. "u24" = 3-byte unsigned int.
- *
- * ---------------------------------------------------------------------------
- * !! ASSUMPTIONS TO SANITY-CHECK ON THE PHYSICAL BIKEERG (first test) !!
- * ---------------------------------------------------------------------------
- *  A. CADENCE: On a BikeErg, the "Stroke Rate" field (SPM) reported by the
- *     PM5 is the pedal cadence in RPM. We surface it directly as `cadence`.
- *     -> Verify our cadence matches the RPM the PM5 shows on screen.
- *  B. POWER: Instantaneous watts come from the "Additional Stroke Data"
- *     characteristic (0x0036, bytes 3-4). This updates ONCE PER PEDAL STROKE,
- *     so at low cadence it refreshes slowly — this is exactly how the PM5's
- *     own watts number behaves. Between strokes we hold the last value.
- *     -> Verify watts matches the PM5 display while pedalling steadily.
- *  C. SPEED: Reported in 0.001 m/s (0x0032 bytes 3-4). The BikeErg models a
- *     virtual bike, so this is the simulated road speed. We expose m/s and a
- *     km/h convenience value.
- *     -> Verify km/h is sane vs. the PM5's pace/speed display.
- *  D. DISTANCE / ELAPSED TIME: 0x0031 — distance in 0.1 m, time in 0.01 s.
- *     -> Verify against the PM5's distance and time.
- *
- * Everything parsed is also console.log'd (raw hex + parsed) for debugging.
- */
-
-/* ---- C2 GATT UUIDs (all share base ...-43E5-11E4-916C-0800200C9A66) ---- */
-const C2 = {
-  // Device Information service (optional; used for serial/firmware readout)
-  DEVICE_INFO_SERVICE: 'ce060010-43e5-11e4-916c-0800200c9a66',
-  SERIAL_CHAR:         'ce060012-43e5-11e4-916c-0800200c9a66',
-  HW_REV_CHAR:         'ce060013-43e5-11e4-916c-0800200c9a66',
-  FW_REV_CHAR:         'ce060014-43e5-11e4-916c-0800200c9a66',
-  MANUFACTURER_CHAR:   'ce060015-43e5-11e4-916c-0800200c9a66',
-
-  // C2 "PM Rowing" service — the live data stream
-  ROWING_SERVICE:      'ce060030-43e5-11e4-916c-0800200c9a66',
-  GENERAL_STATUS:      'ce060031-43e5-11e4-916c-0800200c9a66', // 0x0031
-  ADDITIONAL_STATUS_1: 'ce060032-43e5-11e4-916c-0800200c9a66', // 0x0032
-  ADDITIONAL_STATUS_2: 'ce060033-43e5-11e4-916c-0800200c9a66', // 0x0033
-  SAMPLE_RATE:         'ce060034-43e5-11e4-916c-0800200c9a66', // 0x0034 (write)
-  STROKE_DATA:         'ce060035-43e5-11e4-916c-0800200c9a66', // 0x0035
-  ADD_STROKE_DATA:     'ce060036-43e5-11e4-916c-0800200c9a66', // 0x0036 (power)
-};
-
-/* Sample-rate values written to 0x0034 (controls status stream cadence).
- * 0 = 1 s, 1 = 500 ms, 2 = 250 ms, 3 = 100 ms. We use 250 ms for a
- * responsive-but-light stream on older hardware. */
-const SAMPLE_RATE = { ONE_SEC: 0, HALF_SEC: 1, QUARTER_SEC: 2, TENTH_SEC: 3 };
-
-/* Human-readable rowing/erg state (0x0031 byte 9). */
-const ROWING_STATE = ['Inactive', 'Active'];
-const WORKOUT_STATE = [
-  'WaitToBegin', 'WorkoutRow', 'CountdownPause', 'IntervalRest',
-  'IntervalWorkTime', 'IntervalWorkDistance', 'IntervalRestEndToWorkTime',
-  'IntervalRestEndToWorkDistance', 'IntervalWorkTimeToRest',
-  'IntervalWorkDistanceToRest', 'WorkoutEnd', 'Terminate', 'WorkoutLogged',
-  'Rearm',
-];
-
-/* ---- little-endian byte helpers over a DataView ---- */
-const u8  = (dv, i) => dv.getUint8(i);
-const u16 = (dv, i) => dv.getUint8(i) | (dv.getUint8(i + 1) << 8);
-const u24 = (dv, i) => dv.getUint8(i) | (dv.getUint8(i + 1) << 8) | (dv.getUint8(i + 2) << 16);
-
-const toHex = (dv) =>
-  Array.from({ length: dv.byteLength }, (_, i) =>
-    dv.getUint8(i).toString(16).padStart(2, '0')).join(' ');
-
-/*
- * PM5 — tiny event-emitting wrapper around the BLE connection.
+ * The PM5 does NOT use the standard Fitness Machine Service (FTMS) as its
+ * primary interface; it uses Concept2's own GATT services.
  *
  * Events (subscribe via .on(name, cb)):
- *   'status'  (string)  — connection status text
- *   'data'    (metrics) — latest merged metric snapshot (see #metrics)
- *   'error'   (Error)
- *   'device'  ({name})  — device identity once connected
+ *   'state' ({state, detail, deviceName}) — state is one of
+ *            idle | requesting | connecting | connected | reconnecting | disconnected
+ *   'data'  (metrics)  — latest merged snapshot, emitted on every packet
+ *   'error' (Error)
  */
-class PM5 {
-  constructor() {
-    this.device = null;
-    this.server = null;
-    this._listeners = { status: [], data: [], error: [], device: [] };
+import { C2, SAMPLE_RATE, PARSERS, toHex } from './pm5-parse.js';
 
-    /* Latest known values, merged across the three characteristics. Each
-     * characteristic notifies independently, so we keep one running snapshot
-     * and emit it whenever any piece updates. */
+/* Wait before each reconnect attempt. ~75 s in total, then give up. */
+export const DEFAULT_RECONNECT_DELAYS_MS =
+  [1000, 2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000];
+
+export class PM5 {
+  /**
+   * @param {object} [opts]
+   * @param {Bluetooth} [opts.bluetooth]  defaults to navigator.bluetooth
+   * @param {number[]} [opts.reconnectDelaysMs]
+   * @param {boolean} [opts.debug]  log every packet (raw hex + parsed)
+   * @param {Console} [opts.log]
+   */
+  constructor({
+    bluetooth = globalThis.navigator?.bluetooth,
+    reconnectDelaysMs = DEFAULT_RECONNECT_DELAYS_MS,
+    debug = false,
+    log = console,
+  } = {}) {
+    this.bluetooth = bluetooth;
+    this.reconnectDelaysMs = reconnectDelaysMs;
+    this.debug = debug;
+    this.log = log;
+
+    this.device = null;
+    this.state = 'idle';
+    this._detail = '';
+    this._listeners = {};
+    this._subs = [];               // [{ch, handler}] — removed on every teardown
+    this._userDisconnect = false;  // true = don't auto-reconnect
+    this._reconnectTimer = null;
+    this._recording = null;
+    this._onDisconnected = () => this._handleDisconnected();
+
+    /* Latest known values, merged across characteristics. Kept across
+     * reconnects so a dropped link doesn't zero the ride. */
     this.metrics = {
       powerW: 0,        // watts (per-stroke, held between strokes)
       speedMps: 0,      // m/s
-      speedKmh: 0,      // km/h (derived)
+      speedKmh: 0,      // km/h
       cadence: 0,       // rpm (BikeErg) — PM5 "stroke rate"
-      distanceM: 0,     // metres
+      distanceM: 0,     // metres — authoritative race distance
       elapsedSec: 0,    // seconds
-      dragFactor: 0,    // C2 drag factor
-      heartRate: 0,     // bpm (0/255 = none)
+      dragFactor: 0,
+      heartRate: 0,     // bpm (0 = no strap)
       strokeCount: 0,
       rowingState: 0,
       workoutState: 0,
@@ -117,47 +70,146 @@ class PM5 {
   on(event, cb) { (this._listeners[event] ||= []).push(cb); return this; }
   _emit(event, payload) { (this._listeners[event] || []).forEach((cb) => cb(payload)); }
 
-  get isConnected() { return !!(this.device && this.device.gatt && this.device.gatt.connected); }
+  get isConnected() { return this.state === 'connected' && !!this.device?.gatt?.connected; }
 
-  /* ---- connect / disconnect ---- */
+  _setState(state, detail = '') {
+    if (state === this.state && detail === this._detail) return;
+    this.state = state;
+    this._detail = detail;
+    this._emit('state', { state, detail, deviceName: this.device?.name || '' });
+  }
+
+  /* ---- public: connect / disconnect ---- */
 
   async connect() {
-    if (!navigator.bluetooth) {
+    if (!this.bluetooth) {
       const err = new Error('Web Bluetooth is not available. Use Chrome on Android/desktop over HTTPS or localhost.');
       this._emit('error', err);
       throw err;
     }
+    if (['requesting', 'connecting', 'connected', 'reconnecting'].includes(this.state)) return;
 
-    this._emit('status', 'Requesting device…');
-    /* PM5 advertises with a "PM5" name prefix. The rowing service UUID is not
-     * always in the advertisement, so we filter by name and declare the
-     * services we need under optionalServices to gain access post-connect. */
-    this.device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'PM5' }],
-      optionalServices: [C2.ROWING_SERVICE, C2.DEVICE_INFO_SERVICE],
-    });
+    this._userDisconnect = false;
+    this._setState('requesting');
 
-    this.device.addEventListener('gattserverdisconnected', () => {
-      this._emit('status', 'Disconnected');
-      this._emit('device', { name: null });
-    });
+    let device;
+    try {
+      /* PM5 advertises as "PM5 <serial>". The rowing service isn't always in
+       * the advertisement, so filter by name and list the services we need
+       * under optionalServices. */
+      device = await this.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'PM5' }],
+        optionalServices: [C2.ROWING_SERVICE, C2.DEVICE_INFO_SERVICE],
+      });
+    } catch (err) {
+      this._setState('disconnected', err?.name === 'NotFoundError' ? 'No device selected' : (err?.message || 'Request failed'));
+      throw err;
+    }
 
-    this._emit('status', `Connecting to ${this.device.name}…`);
-    this.server = await this.device.gatt.connect();
-    this._emit('device', { name: this.device.name });
+    // Chrome may return the same device object every time: never double-bind.
+    if (this.device && this.device !== device) {
+      this.device.removeEventListener('gattserverdisconnected', this._onDisconnected);
+    }
+    this.device = device;
+    device.removeEventListener('gattserverdisconnected', this._onDisconnected);
+    device.addEventListener('gattserverdisconnected', this._onDisconnected);
 
-    await this._readDeviceInfo();
-    await this._subscribeRowing();
-
-    this._emit('status', `Connected to ${this.device.name}`);
-    console.log('[PM5] connected:', this.device.name, this.device.id);
+    this._setState('connecting', device.name);
+    try {
+      await this._open();
+    } catch (err) {
+      // Partial setup (e.g. GATT up but service missing): tear it all down.
+      this._userDisconnect = true;
+      this._unsubscribe();
+      if (device.gatt.connected) device.gatt.disconnect();
+      this._setState('disconnected', err.message || 'Connection failed');
+      throw err;
+    }
+    this._setState('connected', device.name);
+    this.log.log('[PM5] connected:', device.name, device.id);
   }
 
   async disconnect() {
-    if (this.device && this.device.gatt && this.device.gatt.connected) {
-      this.device.gatt.disconnect();
+    this._userDisconnect = true;
+    this._cancelReconnect();
+    this._unsubscribe();
+    if (this.device?.gatt?.connected) this.device.gatt.disconnect();
+    this._setState('disconnected');
+  }
+
+  /* ---- public: raw packet recording (for building test fixtures) ---- */
+
+  startRecording() {
+    this._recording = {
+      startedAt: new Date().toISOString(),
+      device: this.device?.name || null,
+      packets: [],               // {t: ms since start, char: '0x31', hex}
+    };
+    this._recordStart = Date.now();
+  }
+
+  stopRecording() {
+    const rec = this._recording;
+    this._recording = null;
+    return rec;
+  }
+
+  get isRecording() { return !!this._recording; }
+
+  /* ---- lifecycle internals ---- */
+
+  async _open() {
+    this.server = await this.device.gatt.connect();
+    await this._readDeviceInfo();
+    await this._subscribeRowing();
+  }
+
+  _handleDisconnected() {
+    this._unsubscribe();
+    if (this.state === 'connected' && !this._userDisconnect) {
+      this._scheduleReconnect(0);
+      return;
     }
-    this._emit('status', 'Disconnected');
+    // While connecting/reconnecting, whoever is mid-attempt handles failure.
+    if (this.state === 'connecting' || this.state === 'reconnecting') return;
+    this._setState('disconnected');
+  }
+
+  _scheduleReconnect(attempt) {
+    const total = this.reconnectDelaysMs.length;
+    if (attempt >= total) {
+      this._setState('disconnected', 'Lost connection to PM5');
+      return;
+    }
+    this._setState('reconnecting', `Attempt ${attempt + 1} of ${total}`);
+    this._reconnectTimer = setTimeout(async () => {
+      this._reconnectTimer = null;
+      if (this._userDisconnect) return;
+      try {
+        await this._open();
+        if (this._userDisconnect) { this._unsubscribe(); this.device.gatt.disconnect(); return; }
+        this._setState('connected', this.device.name);
+        this.log.log('[PM5] reconnected on attempt', attempt + 1);
+      } catch (err) {
+        if (this._userDisconnect) return;
+        this.log.warn('[PM5] reconnect attempt', attempt + 1, 'failed:', err.message);
+        this._unsubscribe();
+        if (this.device.gatt.connected) this.device.gatt.disconnect();
+        this._scheduleReconnect(attempt + 1);
+      }
+    }, this.reconnectDelaysMs[attempt]);
+  }
+
+  _cancelReconnect() {
+    if (this._reconnectTimer) clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = null;
+  }
+
+  _unsubscribe() {
+    for (const { ch, handler } of this._subs) {
+      ch.removeEventListener('characteristicvaluechanged', handler);
+    }
+    this._subs = [];
   }
 
   /* ---- device info (best-effort; failures are non-fatal) ---- */
@@ -173,83 +225,48 @@ class PM5 {
       const [serial, hw, fw] = await Promise.all([
         read(C2.SERIAL_CHAR), read(C2.HW_REV_CHAR), read(C2.FW_REV_CHAR),
       ]);
-      console.log('[PM5] device info — serial:', serial, 'hw:', hw, 'firmware:', fw);
+      this.log.log('[PM5] device info — serial:', serial, 'hw:', hw, 'firmware:', fw);
     } catch (e) {
-      console.warn('[PM5] device info unavailable:', e.message);
+      this.log.warn('[PM5] device info unavailable:', e.message);
     }
   }
 
   /* ---- subscribe to the live data characteristics ---- */
 
   async _subscribeRowing() {
+    this._unsubscribe();
     const svc = await this.server.getPrimaryService(C2.ROWING_SERVICE);
 
-    // Set the status stream sample rate (best-effort — some firmware differs).
+    // Status stream every 250 ms (best-effort — some firmware differs).
     try {
       const rate = await svc.getCharacteristic(C2.SAMPLE_RATE);
       await rate.writeValue(Uint8Array.of(SAMPLE_RATE.QUARTER_SEC));
-      console.log('[PM5] sample rate set to 250 ms');
     } catch (e) {
-      console.warn('[PM5] could not set sample rate (using default):', e.message);
+      this.log.warn('[PM5] could not set sample rate (using default):', e.message);
     }
 
-    await this._startNotify(svc, C2.GENERAL_STATUS,      (dv) => this._parseGeneralStatus(dv));
-    await this._startNotify(svc, C2.ADDITIONAL_STATUS_1, (dv) => this._parseAdditionalStatus1(dv));
-    await this._startNotify(svc, C2.ADD_STROKE_DATA,     (dv) => this._parseAdditionalStrokeData(dv));
+    for (const uuid of Object.keys(PARSERS)) {
+      const ch = await svc.getCharacteristic(uuid);
+      const handler = (e) => this._onPacket(uuid, e.target.value);
+      ch.addEventListener('characteristicvaluechanged', handler);
+      this._subs.push({ ch, handler });
+      await ch.startNotifications();
+    }
   }
 
-  async _startNotify(service, uuid, handler) {
-    const ch = await service.getCharacteristic(uuid);
-    ch.addEventListener('characteristicvaluechanged', (e) => {
-      const dv = e.target.value;
-      try {
-        handler(dv);
-        this._emit('data', this.metrics);
-      } catch (err) {
-        console.error('[PM5] parse error on', uuid, err, toHex(dv));
-        this._emit('error', err);
-      }
-    });
-    await ch.startNotifications();
-    console.log('[PM5] subscribed to', uuid);
-  }
-
-  /* ---- parsers (offsets straight from the C2 spec; see header) ---- */
-
-  // 0x0031 General Status
-  _parseGeneralStatus(dv) {
-    this.metrics.elapsedSec   = u24(dv, 0) * 0.01;  // 0.01 s
-    this.metrics.distanceM    = u24(dv, 3) * 0.1;   // 0.1 m
-    this.metrics.workoutState = u8(dv, 8);
-    this.metrics.rowingState  = u8(dv, 9);
-    if (dv.byteLength > 18) this.metrics.dragFactor = u8(dv, 18);
-    console.log('[PM5] 0x31 general  |', toHex(dv),
-      '=> t:', this.metrics.elapsedSec.toFixed(2), 's  d:',
-      this.metrics.distanceM.toFixed(1), 'm  state:',
-      WORKOUT_STATE[this.metrics.workoutState], '/', ROWING_STATE[this.metrics.rowingState],
-      ' drag:', this.metrics.dragFactor);
-  }
-
-  // 0x0032 Additional Status 1
-  _parseAdditionalStatus1(dv) {
-    this.metrics.elapsedSec = u24(dv, 0) * 0.01;    // 0.01 s
-    this.metrics.speedMps   = u16(dv, 3) * 0.001;   // 0.001 m/s
-    this.metrics.speedKmh   = this.metrics.speedMps * 3.6;
-    this.metrics.cadence    = u8(dv, 5);            // spm == rpm on BikeErg
-    const hr = u8(dv, 6);
-    this.metrics.heartRate  = (hr === 255) ? 0 : hr;
-    console.log('[PM5] 0x32 addstat1 |', toHex(dv),
-      '=> speed:', this.metrics.speedKmh.toFixed(2), 'km/h  cad:',
-      this.metrics.cadence, 'rpm  hr:', this.metrics.heartRate);
-  }
-
-  // 0x0036 Additional Stroke Data (instantaneous power lives here)
-  _parseAdditionalStrokeData(dv) {
-    this.metrics.powerW      = u16(dv, 3);          // watts
-    if (dv.byteLength >= 9) this.metrics.strokeCount = u16(dv, 7);
-    console.log('[PM5] 0x36 addstrk  |', toHex(dv),
-      '=> power:', this.metrics.powerW, 'W  strokes:', this.metrics.strokeCount);
+  _onPacket(uuid, dv) {
+    const { tag, parse } = PARSERS[uuid];
+    if (this._recording) {
+      this._recording.packets.push({ t: Date.now() - this._recordStart, char: tag, hex: toHex(dv) });
+    }
+    try {
+      const parsed = parse(dv);
+      Object.assign(this.metrics, parsed);
+      if (this.debug) this.log.log(`[PM5] ${tag} |`, toHex(dv), '=>', parsed);
+      this._emit('data', this.metrics);
+    } catch (err) {
+      this.log.error('[PM5] parse error on', tag, err, toHex(dv));
+      this._emit('error', err);
+    }
   }
 }
-
-window.PM5 = PM5;
