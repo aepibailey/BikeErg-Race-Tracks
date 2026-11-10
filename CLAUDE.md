@@ -4,6 +4,8 @@ Local-first web game: a Concept2 BikeErg's PM5 monitor streams live data over
 Web Bluetooth and (Phase 2+) drives a synthwave / outrun night-road race with
 ghost racers from ride history. See README.md for phases and setup.
 
+Read docs/DESIGN.md before starting work.
+
 ## Status
 
 - Phase 1 (BLE connection + live numbers) is built but **has never been tested
