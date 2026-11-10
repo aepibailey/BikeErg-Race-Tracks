@@ -5,6 +5,7 @@ Web Bluetooth and (Phase 2+) drives a synthwave / outrun night-road race with
 ghost racers from ride history. See README.md for phases and setup.
 
 ## Design doc
+- Read docs/DESIGN.md before starting any work; its locked-in decisions are binding.
 - `docs/DESIGN.md` is an export of a live Claude Doc Shawn keeps in claude.ai
   (https://claude.ai/artifact/Pj7FzSn1njBwkpQQW9GfCH, tab "Design Doc"). The live doc wins if they differ.
 - Re-export the tab at the start of every phase or build batch (Claude Docs export as Markdown)
