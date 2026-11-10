@@ -4,7 +4,13 @@ Local-first web game: a Concept2 BikeErg's PM5 monitor streams live data over
 Web Bluetooth and (Phase 2+) drives a synthwave / outrun night-road race with
 ghost racers from ride history. See README.md for phases and setup.
 
-Read docs/DESIGN.md before starting work.
+## Design doc
+- `docs/DESIGN.md` is an export of a live Claude Doc Shawn keeps in claude.ai
+  (https://claude.ai/artifact/Pj7FzSn1njBwkpQQW9GfCH, tab "Design Doc"). The live doc wins if they differ.
+- Re-export the tab at the start of every phase or build batch (Claude Docs export as Markdown)
+  into `docs/DESIGN.md`, and commit the change.
+- Don't silently edit DESIGN.md. If something in it looks wrong or a decision changes, tell Shawn
+  what to change in the live doc, then re-export.
 
 ## Status
 
