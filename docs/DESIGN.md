@@ -160,6 +160,7 @@ Newest first. Add a row for every decision, scope change or test result.
 
 | Date | Decision or event | Detail |
 | --- | --- | --- |
+| 2026-11-10 | Claude Code reads this doc directly | CLAUDE.md links the live doc; Code re-exports the "Design Doc" tab to docs/DESIGN.md each phase or build batch. First export verified byte-exact |
 | 2026-11-10 | Race position from PM5 distance | Replaces "track distance per second = erg speed"; speed only smooths scrolling between \~250 ms updates |
 | 2026-11-10 | Phase 2 respecified for synthwave | Neon road, sky, visual hills, quality settings replace the plain grid |
 | 2026-11-10 | Phase 1 code written | Committed; on-tablet test still pending |
