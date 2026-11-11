@@ -1,0 +1,10 @@
+{
+  "name": "bikeerg-racer",
+  "private": true,
+  "type": "module",
+  "description": "Local-first BikeErg race game driven by a Concept2 PM5 over Web Bluetooth.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "serve": "python3 -m http.server 8000"
+  }
+}
