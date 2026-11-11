@@ -61,6 +61,7 @@ export class PM5 {
       elapsedSec: 0,    // seconds
       dragFactor: 0,
       heartRate: 0,     // bpm (0 = no strap)
+      pm5PaceSec: 0,    // PM5's own pace field (s; per 500 or 1000 m — unverified)
       strokeCount: 0,
       rowingState: 0,
       workoutState: 0,

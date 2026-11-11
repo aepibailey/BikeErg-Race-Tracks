@@ -35,7 +35,13 @@ ghost racers from ride history. See README.md for phases and setup.
 - `js/pm5.js` — `PM5` class: connect, auto-reconnect, disconnect, raw packet
   recording. Takes `{ bluetooth, reconnectDelaysMs, debug, log }` so tests can
   inject a fake.
-- `js/app.js` — UI wiring, screen wake lock, capture download.
+- `js/format.js` — pure pace/time formatting. `js/capture.js` — builds the
+  capture file (raw packets, what the app parsed, what the rider typed from
+  the PM5 screen).
+- `js/app.js` — UI wiring, screen wake lock, capture flow.
+- `tools/device-check.{html,js}` — THROWAWAY graphics probe (device info +
+  Canvas 2D vs WebGL timings). Not part of the game; delete once the graphics
+  approach is decided.
 - `test/helpers/fake-ble.js` — in-memory Web Bluetooth fake. Like Chrome, it
   returns the same device/characteristic objects across reconnects; keep it
   that way (that is what catches listener pile-up bugs).

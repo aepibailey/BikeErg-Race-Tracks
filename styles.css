@@ -138,3 +138,41 @@ main {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+.panel {
+  margin-top: 20px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 16px;
+}
+.panel h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.panel .hint { margin-top: 4px; }
+
+.screen-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.screen-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.screen-form small { color: var(--off); }
+.screen-form input,
+.screen-form select,
+.screen-form textarea {
+  font: inherit;
+  font-size: 1.1rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 44px;
+}
+.screen-form .wide { grid-column: 1 / -1; }
+.screen-form .actions { display: flex; gap: 12px; flex-wrap: wrap; }

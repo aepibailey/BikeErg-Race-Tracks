@@ -51,6 +51,12 @@ test('0x0032 additional status 1: speed, cadence, heart rate', () => {
   assert.equal(m.heartRate, 142);
 });
 
+test('0x0032 exposes the PM5\'s own current-pace field (0.01 s units)', () => {
+  // current pace 120.00 s -> 12000 -> 0x2EE0 -> E0 2E (bytes 7-8)
+  const pkt = dv([0, 0, 0, 0, 0, 0, 255, 0xE0, 0x2E, 0, 0, 0, 0, 0, 0, 0, 0]);
+  assert.equal(parseAdditionalStatus1(pkt).pm5PaceSec, 120);
+});
+
 test('0x0032 heart rate 255 means "no strap" and reads as 0', () => {
   const pkt = dv([0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   assert.equal(parseAdditionalStatus1(pkt).heartRate, 0);

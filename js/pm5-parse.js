@@ -12,6 +12,8 @@
  *  B. POWER: 0x0036 "stroke power" updates once per stroke; held between.
  *  C. SPEED: 0x0032, 0.001 m/s — the BikeErg's simulated road speed.
  *  D. DISTANCE / TIME: 0x0031, 0.1 m / 0.01 s.
+ *  E. PM5 PACE: 0x0032 "current pace", 0.01 s. On a rower this is per 500 m;
+ *     on a BikeErg it may be per 1000 m. Compare with our pace-from-speed.
  */
 
 /* ---- C2 GATT UUIDs (all share base ...-43E5-11E4-916C-0800200C9A66) ---- */
@@ -74,6 +76,7 @@ export function parseAdditionalStatus1(dv) {
     speedKmh: speedMps * 3.6,
     cadence: u8(dv, 5),                 // spm == rpm on BikeErg (assumption A)
     heartRate: hr === 255 ? 0 : hr,     // 255 = no HR strap
+    pm5PaceSec: u16(dv, 7) * 0.01,      // PM5's own pace; distance unit unverified (E)
   };
 }
 

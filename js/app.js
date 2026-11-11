@@ -6,6 +6,8 @@
  * console.
  */
 import { PM5 } from './pm5.js';
+import { paceSecPer, fmtPace, fmtTime } from './format.js';
+import { buildCapture, captureFilename } from './capture.js';
 
 const debug = new URLSearchParams(location.search).has('debug');
 const pm5 = new PM5({ debug });
@@ -26,6 +28,11 @@ const els = {
   drag:     $('drag'),
   hr:       $('hr'),
   strokes:  $('strokes'),
+  pace:     $('pace'),
+  pm5Pace:  $('pm5Pace'),
+  screenCheck: $('screenCheck'),
+  screenForm:  $('screenForm'),
+  discardBtn:  $('discardBtn'),
   unsupported: $('unsupported'),
   debugNote:   $('debugNote'),
 };
@@ -36,12 +43,6 @@ if (!navigator.bluetooth) {
 }
 els.debugNote.hidden = !debug;
 
-const fmtTime = (s) => {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-};
-
 const render = (m) => {
   els.power.textContent    = Math.round(m.powerW);
   els.speed.textContent    = m.speedKmh.toFixed(1);
@@ -51,6 +52,8 @@ const render = (m) => {
   els.drag.textContent     = m.dragFactor || '–';
   els.hr.textContent       = m.heartRate ? Math.round(m.heartRate) : '–';
   els.strokes.textContent  = m.strokeCount;
+  els.pace.textContent     = fmtPace(paceSecPer(m.speedMps, 1000));
+  els.pm5Pace.textContent  = fmtPace(m.pm5PaceSec);
 };
 
 /* ---- screen wake lock: keep the tablet awake while connected ---- */
@@ -94,7 +97,7 @@ pm5.on('state', ({ state, detail, deviceName }) => {
     .filter((v, i, a) => a.indexOf(v) === i).join(' · ');
   els.connectBtn.textContent = ui.btn;
   els.connectBtn.disabled = !!ui.busy;
-  els.recordBtn.disabled = state !== 'connected' && !pm5.isRecording;
+  els.recordBtn.disabled = (state !== 'connected' && !pm5.isRecording) || !!pendingRec;
   syncWakeLock();
 });
 
@@ -114,24 +117,60 @@ els.connectBtn.addEventListener('click', async () => {
   }
 });
 
-/* ---- raw packet recording → downloadable JSON (future test fixture) ---- */
+/* ---- raw packet recording → "what did the PM5 show?" → capture file ---- */
+
+let pendingRec = null;     // stopped recording awaiting the rider's PM5 values
+let parsedAtStop = null;   // what the app showed at that moment
+
+const resetRecordBtn = () => {
+  els.recordBtn.textContent = 'Record packets';
+  els.recordBtn.classList.remove('recording');
+  els.recordBtn.disabled = pm5.state !== 'connected';
+};
+
+const closeScreenCheck = () => {
+  pendingRec = null;
+  parsedAtStop = null;
+  els.screenForm.reset();
+  els.screenCheck.hidden = true;
+  resetRecordBtn();
+};
 
 els.recordBtn.addEventListener('click', () => {
   if (!pm5.isRecording) {
     pm5.startRecording();
-    els.recordBtn.textContent = 'Stop & download';
+    els.recordBtn.textContent = 'Stop recording';
     els.recordBtn.classList.add('recording');
     return;
   }
-  const rec = pm5.stopRecording();
-  rec.parsedAtEnd = { ...pm5.metrics }; // what we decoded — compare with the PM5 screen
-  const blob = new Blob([JSON.stringify(rec, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `pm5-capture-${rec.startedAt.replace(/[:.]/g, '-')}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  pendingRec = pm5.stopRecording();
+  parsedAtStop = { ...pm5.metrics };
+  const m = parsedAtStop;
+  $('appWatts').textContent    = `app: ${Math.round(m.powerW)}`;
+  $('appRpm').textContent      = `app: ${Math.round(m.cadence)}`;
+  $('appPace').textContent     = `app: ${fmtPace(paceSecPer(m.speedMps, 1000))} /1000 m`;
+  $('appDistance').textContent = `app: ${Math.round(m.distanceM)}`;
+  $('appTime').textContent     = `app: ${fmtTime(m.elapsedSec)}`;
   els.recordBtn.textContent = 'Record packets';
   els.recordBtn.classList.remove('recording');
-  els.recordBtn.disabled = pm5.state !== 'connected';
+  els.recordBtn.disabled = true; // one capture at a time
+  els.screenCheck.hidden = false;
+  els.screenCheck.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  els.screenForm.elements.watts.focus({ preventScroll: true });
 });
+
+els.screenForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!pendingRec) return;
+  const screen = Object.fromEntries(new FormData(els.screenForm));
+  const capture = buildCapture(pendingRec, parsedAtStop, screen);
+  const blob = new Blob([JSON.stringify(capture, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = captureFilename(capture);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  closeScreenCheck();
+});
+
+els.discardBtn.addEventListener('click', closeScreenCheck);

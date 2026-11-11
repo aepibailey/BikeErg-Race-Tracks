@@ -68,13 +68,25 @@ with rendering bugs.
 ### First-ride checklist
 
 1. Connect, pedal, and confirm each number moves.
-2. Tap **Record packets**. Pedal ~1 minute at a steady effort.
-3. Just before stopping, note what the PM5 screen shows: watts, RPM, speed /
-   pace, distance, time.
-4. Tap **Stop & download**. Commit the JSON to `test/fixtures/` along with the
-   numbers from step 3 so a test can lock in the real byte layout.
-5. Optional: walk the tablet out of range (or switch the PM5 off and on) to
+2. Compare the two pace tiles with the PM5 screen. **Pace /1000 m** is worked
+   out from the speed we decode; **PM5 pace field** is the PM5's own pace
+   number (on a rower that's per 500 m — on the BikeErg we don't know yet).
+3. Tap **Record packets**. Pedal ~1 minute at a steady effort.
+4. Keep pedalling, read the PM5 screen, tap **Stop recording**, type what you
+   read into the form (blanks are fine), then tap **Download capture**.
+5. Send the JSON file to Claude Code; it goes in `test/fixtures/` so a test
+   can lock in the real byte layout.
+6. Optional: walk the tablet out of range (or switch the PM5 off and on) to
    watch it reconnect.
+
+### Device check (graphics probe)
+
+Open `tools/device-check.html` on the same device (e.g.
+`https://…github.io/…/tools/device-check.html`), plug it in, tap **Run**, and
+wait ~30 s. Then tap **Download results** (or **Copy results**) and send the
+file to Claude Code. It reports the device model, GPU and screen, and times a
+rough neon-road scene drawn with Canvas 2D and with WebGL. This page is a
+throwaway probe for the Canvas 2D vs WebGL decision, not part of the game.
 
 ## Tests
 
@@ -85,6 +97,8 @@ npm test
 ```
 
 - `test/parse.test.js` — packet decoding against hand-built spec packets.
+- `test/format.test.js` — pace and time formatting.
+- `test/capture.test.js` — the downloadable capture file.
 - `test/connection.test.js` — connect / drop / reconnect / disconnect
   lifecycle against an in-memory fake of Chrome's Web Bluetooth
   (`test/helpers/fake-ble.js`).
@@ -96,8 +110,11 @@ index.html        Phase 1 page (status, connect/record buttons, live metrics)
 styles.css        Plain dark styling (the synthwave look comes in Phase 2)
 js/pm5-parse.js   Pure packet decoding + C2 UUIDs  ← the critical bit
 js/pm5.js         PM5 BLE connection lifecycle (connect, reconnect, record)
+js/format.js      Pure pace / time formatting
+js/capture.js     Builds the capture file (packets + PM5-screen values)
 js/app.js         UI wiring, wake lock, capture download
 test/             node:test suites + fake Web Bluetooth
+tools/            Throwaway device-check page (graphics probe)
 ```
 
 Plain ES modules, no build step. Because of that, the page must be served over

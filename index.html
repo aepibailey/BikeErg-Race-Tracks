@@ -46,6 +46,14 @@
       </div>
 
       <div class="metric">
+        <span class="value" id="pace">–</span>
+        <span class="label">Pace /1000 m</span>
+      </div>
+      <div class="metric">
+        <span class="value" id="pm5Pace">–</span>
+        <span class="label">PM5 pace field</span>
+      </div>
+      <div class="metric">
         <span class="value" id="distance">0</span>
         <span class="label">Distance (m)</span>
       </div>
@@ -67,14 +75,47 @@
       </div>
     </section>
 
+    <section id="screenCheck" class="panel" hidden>
+      <h2>What did the PM5 show?</h2>
+      <p class="hint">
+        Type what the PM5 screen showed when you tapped <strong>Stop recording</strong>.
+        Leave anything you didn't catch blank. The app's own numbers at that
+        moment are shown in grey.
+      </p>
+      <form id="screenForm" class="screen-form" autocomplete="off">
+        <label>Watts <small id="appWatts"></small>
+          <input name="watts" inputmode="decimal"></label>
+        <label>RPM <small id="appRpm"></small>
+          <input name="rpm" inputmode="decimal"></label>
+        <label>Pace (m:ss.t) <small id="appPace"></small>
+          <input name="pace" inputmode="decimal" placeholder="2:05.3"></label>
+        <label>Pace is per…
+          <select name="paceUnit">
+            <option value="">not sure</option>
+            <option value="500m">500 m</option>
+            <option value="1000m">1000 m</option>
+          </select></label>
+        <label>Distance (m) <small id="appDistance"></small>
+          <input name="distance" inputmode="decimal"></label>
+        <label>Time (m:ss) <small id="appTime"></small>
+          <input name="time" inputmode="decimal"></label>
+        <label class="wide">Notes
+          <textarea name="notes" rows="2" placeholder="Anything odd? e.g. watts lagged, RPM jumped"></textarea></label>
+        <div class="wide actions">
+          <button type="submit" class="btn">Download capture</button>
+          <button type="button" id="discardBtn" class="btn secondary">Discard</button>
+        </div>
+      </form>
+    </section>
+
     <p id="debugNote" class="hint" hidden>
       Debug mode: every packet is logged (raw hex + parsed) to the browser console.
     </p>
     <p class="hint">
-      First ride check: compare these numbers with the PM5 screen. Tap
-      <strong>Record packets</strong>, pedal for a minute at a steady effort,
-      then note the PM5's watts, RPM, speed and distance and tap
-      <strong>Stop &amp; download</strong>. Add <code>?debug=1</code> to the URL
+      First ride check: tap <strong>Record packets</strong> and pedal for a
+      minute at a steady effort. Keep pedalling, read the PM5 screen, tap
+      <strong>Stop recording</strong>, then type what you read and tap
+      <strong>Download capture</strong>. Add <code>?debug=1</code> to the URL
       to log every packet to the console.
     </p>
   </main>
